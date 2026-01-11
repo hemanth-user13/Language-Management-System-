@@ -7,22 +7,34 @@ import {
   Search,
   AlertCircle,
   CheckCircle2,
-  ChevronLeft,
   Home,
   ChevronsUpDown,
+  Filter,
+  X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-
-import { cn } from "@/lib/utils";
 import { TreeNode } from "@/types/translation";
+import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 
 interface TreeViewProps {
   tree: TreeNode[];
+  languages: string[];
   selectedPath: string | null;
   onSelectPath: (path: string | null) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  missingFilter: string[];
+  onMissingFilterChange: (languages: string[]) => void;
 }
 
 interface TreeNodeItemProps {
@@ -164,10 +176,13 @@ const TreeNodeItem = ({
 
 export const TreeView = ({
   tree,
+  languages,
   selectedPath,
   onSelectPath,
   searchQuery,
   onSearchChange,
+  missingFilter,
+  onMissingFilterChange,
 }: TreeViewProps) => {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
     new Set(["auth", "dashboard", "common"])
@@ -288,7 +303,7 @@ export const TreeView = ({
         </div>
       )}
 
-      <div className="p-3 border-b border-sidebar-border">
+      <div className="p-3 border-b border-sidebar-border space-y-2">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -299,8 +314,92 @@ export const TreeView = ({
           />
         </div>
 
+        {/* Missing translations filter */}
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant={missingFilter.length > 0 ? "default" : "outline"}
+                size="sm"
+                className="h-8 text-xs flex-1"
+              >
+                <Filter className="w-3 h-3 mr-1" />
+                Missing
+                {missingFilter.length > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="ml-1 h-5 px-1.5 text-[10px]"
+                  >
+                    {missingFilter.length}
+                  </Badge>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel>Show missing in</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={
+                  missingFilter.length === languages.length &&
+                  languages.length > 0
+                }
+                onCheckedChange={(checked) => {
+                  onMissingFilterChange(checked ? [...languages] : []);
+                }}
+              >
+                All Languages
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
+              {languages.map((lang) => (
+                <DropdownMenuCheckboxItem
+                  key={lang}
+                  checked={missingFilter.includes(lang)}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      onMissingFilterChange([...missingFilter, lang]);
+                    } else {
+                      onMissingFilterChange(
+                        missingFilter.filter((l) => l !== lang)
+                      );
+                    }
+                  }}
+                >
+                  {lang.toUpperCase()}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {missingFilter.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => onMissingFilterChange([])}
+              title="Clear filter"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
+
+        {/* Active filter display */}
+        {missingFilter.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {missingFilter.map((lang) => (
+              <Badge
+                key={lang}
+                variant="outline"
+                className="text-xs bg-warning/10 text-warning border-warning/30"
+              >
+                {lang.toUpperCase()} missing
+              </Badge>
+            ))}
+          </div>
+        )}
+
         {/* Expand/Collapse controls */}
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"

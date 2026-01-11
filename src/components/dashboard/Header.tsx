@@ -73,7 +73,7 @@ export const Header = ({
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Languages className="w-4 h-4 text-primary-foreground" />
           </div>
-          <div>
+          <div className="flex flex-col gap-0.5">
             <h1 className="text-lg font-semibold text-foreground">
               {projectName}
             </h1>

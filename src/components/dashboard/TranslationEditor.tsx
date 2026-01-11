@@ -8,10 +8,13 @@ import {
   Pencil,
   X,
   Save,
+  Code,
+  Table,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { TreeNode, UnsavedChange } from "@/types/translation";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -29,6 +32,7 @@ interface TranslationEditorProps {
   languages: string[];
   selectedPath: string | null;
   searchQuery: string;
+  missingFilter: string[];
   unsavedChanges: UnsavedChange[];
   onUpdateTranslation: (
     keyPath: string,
@@ -36,6 +40,9 @@ interface TranslationEditorProps {
     value: string
   ) => void;
   onRenameKey?: (oldPath: string, newKey: string) => void;
+  onBulkUpdate?: (
+    updates: { keyPath: string; language: string; value: string }[]
+  ) => void;
 }
 
 interface TranslationRowProps {
@@ -190,13 +197,18 @@ export const TranslationEditor = ({
   languages,
   selectedPath,
   searchQuery,
+  missingFilter,
   unsavedChanges,
   onUpdateTranslation,
   onRenameKey,
+  onBulkUpdate,
 }: TranslationEditorProps) => {
   const [previewNode, setPreviewNode] = useState<TreeNode | null>(null);
   const [editKeyNode, setEditKeyNode] = useState<TreeNode | null>(null);
   const [newKeyName, setNewKeyName] = useState("");
+  const [viewMode, setViewMode] = useState<"table" | "json">("table");
+  const [jsonContent, setJsonContent] = useState("");
+  const [jsonError, setJsonError] = useState<string | null>(null);
 
   // Flatten tree to get all leaf nodes
   const flattenedNodes = useMemo(() => {
@@ -216,7 +228,7 @@ export const TranslationEditor = ({
     return nodes;
   }, [tree]);
 
-  // Filter nodes based on search and selection
+  // Filter nodes based on search, selection, and missing filter
   const filteredNodes = useMemo(() => {
     let filtered = flattenedNodes;
 
@@ -241,8 +253,15 @@ export const TranslationEditor = ({
       );
     }
 
+    // Filter by missing translations
+    if (missingFilter.length > 0) {
+      filtered = filtered.filter((node) => {
+        return missingFilter.some((lang) => !node.values?.[lang]?.trim());
+      });
+    }
+
     return filtered;
-  }, [flattenedNodes, selectedPath, searchQuery]);
+  }, [flattenedNodes, selectedPath, searchQuery, missingFilter]);
 
   // Group by namespace for better organization
   const groupedNodes = useMemo(() => {
@@ -287,6 +306,78 @@ export const TranslationEditor = ({
     setNewKeyName("");
   }, [editKeyNode, newKeyName, onRenameKey]);
 
+  // Build JSON structure from filtered nodes
+  const buildJsonFromNodes = useCallback(
+    (nodes: TreeNode[]) => {
+      const result: Record<string, Record<string, string>> = {};
+      nodes.forEach((node) => {
+        result[node.path] = {};
+        languages.forEach((lang) => {
+          result[node.path][lang] = node.values?.[lang] || "";
+        });
+      });
+      return result;
+    },
+    [languages]
+  );
+
+  // Switch to JSON view
+  const handleSwitchToJson = useCallback(() => {
+    const json = buildJsonFromNodes(filteredNodes);
+    setJsonContent(JSON.stringify(json, null, 2));
+    setJsonError(null);
+    setViewMode("json");
+  }, [buildJsonFromNodes, filteredNodes]);
+
+  // Apply JSON changes
+  const handleApplyJsonChanges = useCallback(() => {
+    try {
+      const parsed = JSON.parse(jsonContent) as Record<
+        string,
+        Record<string, string>
+      >;
+      const updates: { keyPath: string; language: string; value: string }[] =
+        [];
+
+      Object.entries(parsed).forEach(([keyPath, translations]) => {
+        Object.entries(translations).forEach(([lang, value]) => {
+          const node = filteredNodes.find((n) => n.path === keyPath);
+          const currentValue = node?.values?.[lang] || "";
+          if (currentValue !== value) {
+            updates.push({ keyPath, language: lang, value });
+          }
+        });
+      });
+
+      if (updates.length === 0) {
+        toast.info("No changes detected");
+        return;
+      }
+
+      // Apply updates
+      updates.forEach(({ keyPath, language, value }) => {
+        onUpdateTranslation(keyPath, language, value);
+      });
+
+      toast.success(`Applied ${updates.length} change(s)`);
+      setJsonError(null);
+    } catch (e) {
+      setJsonError("Invalid JSON format. Please fix the syntax errors.");
+      toast.error("Invalid JSON format");
+    }
+  }, [jsonContent, filteredNodes, onUpdateTranslation]);
+
+  // Validate JSON as user types
+  const handleJsonChange = useCallback((value: string) => {
+    setJsonContent(value);
+    try {
+      JSON.parse(value);
+      setJsonError(null);
+    } catch {
+      setJsonError("Invalid JSON syntax");
+    }
+  }, []);
+
   if (flattenedNodes.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -308,64 +399,162 @@ export const TranslationEditor = ({
 
   return (
     <>
-      <div className="flex-1 overflow-auto scrollbar-thin">
-        <table className="w-full border-collapse">
-          <thead className="sticky top-0 z-10 bg-table-header">
-            <tr>
-              <th className="text-left px-4 py-4 text-sm font-semibold text-muted-foreground uppercase tracking-wider border-b border-table-border w-80">
-                Key
-              </th>
-              {languages.map((lang) => (
-                <th
-                  key={lang}
-                  className="text-left px-3 py-4 text-sm font-semibold uppercase tracking-wider border-b border-table-border min-w-[280px]"
-                >
-                  <Badge
-                    variant="outline"
-                    className="font-mono text-sm px-3 py-1"
-                  >
-                    {lang.toUpperCase()}
-                  </Badge>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {namespaces.map((namespace) => (
-              <Fragment key={namespace}>
-                {namespaces.length > 1 && (
-                  <tr className="bg-muted/30">
-                    <td
-                      colSpan={languages.length + 1}
-                      className="px-4 py-3 text-sm font-medium text-muted-foreground"
-                    >
-                      <div className="flex items-center gap-2">
-                        <ChevronRight className="w-4 h-4" />
-                        <span className="font-mono">{namespace}</span>
-                        <span className="ml-2 text-muted-foreground/60">
-                          ({groupedNodes[namespace].length} keys)
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                {groupedNodes[namespace].map((node) => (
-                  <TranslationRow
-                    key={node.path}
-                    node={node}
-                    languages={languages}
-                    unsavedChanges={unsavedChanges}
-                    onUpdateTranslation={onUpdateTranslation}
-                    isHighlighted={selectedPath === node.path}
-                    onPreview={handlePreview}
-                    onEditKey={handleEditKey}
-                  />
-                ))}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
+      {/* View Mode Toggle */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">
+            View:
+          </span>
+          <div className="flex items-center bg-background rounded-lg p-1 border border-border">
+            <Button
+              variant={viewMode === "table" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("table")}
+              className="h-8 gap-2"
+            >
+              <Table className="w-4 h-4" />
+              Table
+            </Button>
+            <Button
+              variant={viewMode === "json" ? "default" : "ghost"}
+              size="sm"
+              onClick={handleSwitchToJson}
+              className="h-8 gap-2"
+            >
+              <Code className="w-4 h-4" />
+              JSON Console
+            </Button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Badge variant="secondary">{filteredNodes.length} keys</Badge>
+        </div>
       </div>
+
+      {viewMode === "table" ? (
+        <div className="flex-1 overflow-auto scrollbar-thin">
+          <table className="w-full border-collapse">
+            <thead className="sticky top-0 z-10 bg-table-header">
+              <tr>
+                <th className="text-left px-4 py-4 text-sm font-semibold text-muted-foreground uppercase tracking-wider border-b border-table-border w-80">
+                  Key
+                </th>
+                {languages.map((lang) => (
+                  <th
+                    key={lang}
+                    className="text-left px-3 py-4 text-sm font-semibold uppercase tracking-wider border-b border-table-border min-w-[280px]"
+                  >
+                    <Badge
+                      variant="outline"
+                      className="font-mono text-sm px-3 py-1"
+                    >
+                      {lang.toUpperCase()}
+                    </Badge>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {namespaces.map((namespace) => (
+                <Fragment key={namespace}>
+                  {namespaces.length > 1 && (
+                    <tr className="bg-muted/30">
+                      <td
+                        colSpan={languages.length + 1}
+                        className="px-4 py-3 text-sm font-medium text-muted-foreground"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ChevronRight className="w-4 h-4" />
+                          <span className="font-mono">{namespace}</span>
+                          <span className="ml-2 text-muted-foreground/60">
+                            ({groupedNodes[namespace].length} keys)
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {groupedNodes[namespace].map((node) => (
+                    <TranslationRow
+                      key={node.path}
+                      node={node}
+                      languages={languages}
+                      unsavedChanges={unsavedChanges}
+                      onUpdateTranslation={onUpdateTranslation}
+                      isHighlighted={selectedPath === node.path}
+                      onPreview={handlePreview}
+                      onEditKey={handleEditKey}
+                    />
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* JSON Editor Header */}
+          <div className="flex items-center justify-between px-4 py-2 bg-[hsl(var(--muted))] border-b border-border">
+            <div className="flex items-center gap-2">
+              <Code className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium">JSON Console Editor</span>
+              {jsonError && (
+                <Badge variant="destructive" className="text-xs">
+                  <AlertTriangle className="w-3 h-3 mr-1" />
+                  {jsonError}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const json = buildJsonFromNodes(filteredNodes);
+                  setJsonContent(JSON.stringify(json, null, 2));
+                  setJsonError(null);
+                  toast.info("Reset to original");
+                }}
+              >
+                Reset
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleApplyJsonChanges}
+                disabled={!!jsonError}
+                className="gap-2"
+              >
+                <Save className="w-4 h-4" />
+                Apply Changes
+              </Button>
+            </div>
+          </div>
+
+          {/* JSON Editor */}
+          <div className="flex-1 p-4 overflow-hidden">
+            <Textarea
+              value={jsonContent}
+              onChange={(e) => handleJsonChange(e.target.value)}
+              className={cn(
+                "w-full h-full font-mono text-sm resize-none bg-[hsl(220,20%,10%)] text-[hsl(120,60%,70%)] border-2",
+                jsonError
+                  ? "border-destructive"
+                  : "border-border focus:border-primary"
+              )}
+              placeholder="JSON content will appear here..."
+              spellCheck={false}
+            />
+          </div>
+
+          {/* JSON Format Info */}
+          <div className="px-4 py-2 bg-muted/50 border-t border-border">
+            <p className="text-xs text-muted-foreground">
+              <strong>Format:</strong>{" "}
+              {`{ "key.path": { "en": "value", "de": "value" }, ... }`} • Edit
+              values directly and click "Apply Changes" to update translations
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Preview Dialog */}
       <Dialog open={!!previewNode} onOpenChange={() => setPreviewNode(null)}>
