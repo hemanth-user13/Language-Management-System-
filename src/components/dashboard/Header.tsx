@@ -6,6 +6,8 @@ import {
   Save,
   RotateCcw,
   Languages,
+  Trash,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +29,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
+import { deleteLanguageData } from "@/services/translationservices";
+import { toast } from "sonner";
 
 interface HeaderProps {
   projectName: string;
@@ -57,12 +61,25 @@ export const Header = ({
 }: HeaderProps) => {
   const [newLanguage, setNewLanguage] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isloading, setIsloading] = useState<boolean>(false);
 
   const handleAddLanguage = () => {
     if (newLanguage.trim()) {
       onAddLanguage(newLanguage.trim().toLowerCase());
       setNewLanguage("");
       setIsAddDialogOpen(false);
+    }
+  };
+
+  const handleTranslationdata = async () => {
+    setIsloading(true);
+    try {
+      await deleteLanguageData();
+      toast.success("Translations key are deleted successfully");
+    } catch (error) {
+      toast.error("There is an issue in deleting the data");
+    } finally {
+      setIsloading(false);
     }
   };
 
@@ -93,6 +110,15 @@ export const Header = ({
 
       <div className="flex items-center gap-2">
         {/* Language Management */}
+        <Button
+          variant="destructive"
+          size="sm"
+          className="gap-2"
+          onClick={handleTranslationdata}
+        >
+          <Trash2 className="w-4 h-4" />
+          {isloading ? "loading....." : "Delete Translations"}
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="gap-2">

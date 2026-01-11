@@ -1,3 +1,4 @@
+import { getLanguageData } from '@/services/translationservices';
 import { TranslationData, TranslationNode, TreeNode, UnsavedChange } from '@/types/translation';
 import { useState, useCallback, useEffect } from 'react';
 
@@ -94,9 +95,18 @@ export const useTranslations = () => {
     
     try {
       // Simulate API call - replace with actual fetch
+      const response=await getLanguageData()
       await new Promise(resolve => setTimeout(resolve, 500));
-      setData(mockData);
-      setOriginalData(JSON.parse(JSON.stringify(mockData)));
+      setData({
+        languages:["en", "de"],
+        translations:response?.data?.data?.data,
+        project:response?.data?.data?.project_name
+      });
+      setOriginalData(JSON.parse(JSON.stringify({
+        languages:["en", "de"],
+        translations:response?.data?.data?.data,
+        project:response?.data?.data?.project_name
+      })));
     } catch (err) {
       setError('Failed to fetch translations');
     } finally {

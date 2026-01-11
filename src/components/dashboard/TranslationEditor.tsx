@@ -228,6 +228,17 @@ export const TranslationEditor = ({
     return nodes;
   }, [tree]);
 
+  function copyObjectToClipboard(obj: any) {
+    try {
+      navigator.clipboard.writeText(obj);
+      toast.success("Translation file copied successfully");
+    } catch (error) {
+      console.error("Clipboard copy failed:", error);
+      toast.error("Clipboard copy failed");
+      return false;
+    }
+  }
+
   // Filter nodes based on search, selection, and missing filter
   const filteredNodes = useMemo(() => {
     let filtered = flattenedNodes;
@@ -516,6 +527,15 @@ export const TranslationEditor = ({
                 }}
               >
                 Reset
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  copyObjectToClipboard(jsonContent);
+                }}
+              >
+                Copy Language
               </Button>
               <Button
                 size="sm"
